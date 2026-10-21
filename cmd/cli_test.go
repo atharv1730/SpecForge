@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -88,20 +89,45 @@ func TestBinaryLoadsPetstore(t *testing.T) {
 
 	spec := "testdata/petstore.yaml"
 	want := "Loaded 3 endpoints from " + spec
-	for _, args := range [][]string{
-		{"generate", "--spec", spec, "--output", "out", "--language", "typescript"},
-		{"mock", "--spec", spec},
-	} {
-		out, err := runBin(t, bin, root, args...)
-		if err != nil {
-			t.Fatalf("%v: %v\n%s", args, err, out)
+	out, err := runBin(t, bin, root, "mock", "--spec", spec)
+	if err != nil {
+		t.Fatalf("mock: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, want) {
+		t.Fatalf("mock output = %q", out)
+	}
+
+	outDir := filepath.Join(t.TempDir(), "out")
+	out, err = runBin(t, bin, root, "generate", "--spec", spec, "--output", outDir, "--language", "typescript")
+	if err != nil {
+		t.Fatalf("generate: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, want) || !strings.Contains(out, "Generated TypeScript client in "+outDir) {
+		t.Fatalf("generate output = %q", out)
+	}
+	types := string(mustRead(t, filepath.Join(outDir, "types.ts")))
+	client := string(mustRead(t, filepath.Join(outDir, "client.ts")))
+	for _, want := range []string{"export interface Pet", "export interface Error", "export type Pets"} {
+		if !strings.Contains(types, want) {
+			t.Fatalf("types.ts missing %q\n%s", want, types)
 		}
-		if !strings.Contains(out, want) {
-			t.Fatalf("%v output = %q", args, out)
+	}
+	for _, want := range []string{"async listPets(", "async showPetById(", "/pets/${encodeURIComponent(petId)}"} {
+		if !strings.Contains(client, want) {
+			t.Fatalf("client.ts missing %q\n%s", want, client)
 		}
 	}
 
-	out, err := runBin(t, bin, root, "generate", "--spec", "bad.yaml", "--output", "out", "--language", "typescript")
+	out, err = runBin(t, bin, root, "generate", "--spec", spec, "--output", outDir, "--language", "python")
+	if err == nil {
+		t.Fatal("expected unsupported language to exit 1")
+	}
+	var pyErr *exec.ExitError
+	if !errors.As(err, &pyErr) || pyErr.ExitCode() != 1 || !strings.Contains(out, "unsupported language") {
+		t.Fatalf("python: %v\n%s", err, out)
+	}
+
+	out, err = runBin(t, bin, root, "generate", "--spec", "bad.yaml", "--output", "out", "--language", "typescript")
 	if err == nil {
 		t.Fatal("expected exit 1")
 	}
@@ -112,6 +138,15 @@ func TestBinaryLoadsPetstore(t *testing.T) {
 	if !strings.Contains(out, "bad.yaml") {
 		t.Fatalf("output = %q", out)
 	}
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }
 
 func runBin(t *testing.T, bin, dir string, args ...string) (string, error) {

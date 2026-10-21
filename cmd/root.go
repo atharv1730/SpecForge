@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/atharv1730/SpecForge/internal/ir"
 	"github.com/atharv1730/SpecForge/internal/loader"
 	"github.com/spf13/cobra"
 )
@@ -33,22 +34,26 @@ representation and generates typed clients and a mock server from that single IR
 }
 
 // loadSpec reads the spec, builds the IR, and prints how many endpoints were found.
-// Generation and the mock server come later; this only proves the spec loads.
 func loadSpec(cmd *cobra.Command) error {
+	_, err := loadAPI(cmd)
+	return err
+}
+
+func loadAPI(cmd *cobra.Command) (*ir.API, error) {
 	specPath, err := cmd.Flags().GetString("spec")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	doc, err := loader.Load(specPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	api, err := loader.Transform(doc)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Loaded %d endpoints from %s\n", len(api.Endpoints), specPath)
-	return nil
+	return api, nil
 }
 
 func markRequired(cmd *cobra.Command, names ...string) {
