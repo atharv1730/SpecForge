@@ -126,6 +126,91 @@ func TestServer(t *testing.T) {
 	}
 }
 
+func TestPathParams(t *testing.T) {
+	pet := &ir.TypeRef{
+		Kind: "object",
+		Name: "Pet",
+		Properties: []ir.Property{
+			{Name: "id", Type: ir.TypeRef{Kind: "primitive", Name: "string"}},
+			{Name: "name", Type: ir.TypeRef{Kind: "primitive", Name: "string"}},
+		},
+	}
+	list := &ir.TypeRef{Kind: "array", Items: pet}
+	special := &ir.TypeRef{
+		Kind: "object",
+		Properties: []ir.Property{
+			{Name: "kind", Type: ir.TypeRef{Kind: "enum", Enum: []string{"static"}}},
+		},
+	}
+	api := &ir.API{Endpoints: []ir.Endpoint{
+		{Method: http.MethodGet, Path: "/pets", Responses: []ir.Response{{
+			StatusCode: http.StatusOK, ContentType: "application/json", Schema: list,
+		}}},
+		{Method: http.MethodGet, Path: "/pets/special", Responses: []ir.Response{{
+			StatusCode: http.StatusOK, ContentType: "application/json", Schema: special,
+		}}},
+		{Method: http.MethodGet, Path: "/pets/{petId}", Responses: []ir.Response{{
+			StatusCode: http.StatusOK, ContentType: "application/json", Schema: pet,
+		}}},
+	}}
+	handler := NewServer(api, 0).Handler
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+
+	var listed []any
+	status := getJSON(t, ts.URL+"/pets", &listed)
+	if status != http.StatusOK || len(listed) != 1 {
+		t.Fatalf("GET /pets = %d %#v", status, listed)
+	}
+
+	for _, id := range []string{"123", "abc"} {
+		req := httptest.NewRequest(http.MethodGet, "/pets/"+id, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /pets/%s = %d", id, rec.Code)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got["id"] != "string" || got["name"] != "string" || len(got) != 2 {
+			t.Fatalf("GET /pets/%s = %#v", id, got)
+		}
+		if req.PathValue("petId") != id {
+			t.Fatalf("petId = %q", req.PathValue("petId"))
+		}
+	}
+
+	var pinned map[string]any
+	status = getJSON(t, ts.URL+"/pets/special", &pinned)
+	if status != http.StatusOK || pinned["kind"] != "static" {
+		t.Fatalf("GET /pets/special = %d %#v", status, pinned)
+	}
+
+	res := get(t, ts.URL+"/pets/123/extra")
+	res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("extra segment status = %d", res.StatusCode)
+	}
+}
+
+func getJSON(t *testing.T, url string, dest any) int {
+	t.Helper()
+	res := get(t, url)
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, dest); err != nil {
+			t.Fatalf("decode %s: %v", body, err)
+		}
+	}
+	return res.StatusCode
+}
+
 func get(t *testing.T, url string) *http.Response {
 	t.Helper()
 	res, err := http.Get(url)
