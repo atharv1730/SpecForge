@@ -34,7 +34,7 @@ func TestLoadNonexistent(t *testing.T) {
 	if doc != nil {
 		t.Fatal("expected nil document")
 	}
-	if !strings.Contains(err.Error(), "nonexistent.yaml") {
+	if !strings.Contains(err.Error(), "nonexistent.yaml") || !strings.Contains(err.Error(), "Check that --spec") {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -63,7 +63,7 @@ paths:
 	if doc != nil {
 		t.Fatal("expected nil document")
 	}
-	if !strings.Contains(err.Error(), "validate") {
+	if !strings.Contains(err.Error(), "validation") || !strings.Contains(err.Error(), "Fix the document") {
 		t.Fatalf("error = %v", err)
 	}
 }

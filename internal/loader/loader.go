@@ -11,10 +11,10 @@ import (
 func Load(path string) (*openapi3.T, error) {
 	doc, err := openapi3.NewLoader().LoadFromFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("load spec %q: %w", path, err)
+		return nil, fmt.Errorf("cannot read OpenAPI spec %q: %w. Check that --spec points to an existing file", path, err)
 	}
 	if err := doc.Validate(context.Background()); err != nil {
-		return nil, fmt.Errorf("validate spec %q: %w", path, err)
+		return nil, fmt.Errorf("OpenAPI spec %q failed validation: %w. Fix the document and run again", path, err)
 	}
 	return doc, nil
 }

@@ -15,7 +15,7 @@ import (
 // kin-openapi resolves $ref during validation, so schemas are read from Value.
 func Transform(doc *openapi3.T) (*ir.API, error) {
 	if doc == nil {
-		return nil, fmt.Errorf("transform: nil document")
+		return nil, fmt.Errorf("cannot transform a nil OpenAPI document. Load a spec before transforming")
 	}
 	api := &ir.API{}
 	if doc.Info != nil {
@@ -48,12 +48,12 @@ func Transform(doc *openapi3.T) (*ir.API, error) {
 				continue
 			}
 			if op.OperationID == "" {
-				fmt.Fprintf(os.Stderr, "warning: skipping %s %s: no operationId\n", method, path)
+				fmt.Fprintf(os.Stderr, "warning: skipping %s %s: no operationId. Add an operationId to include this operation\n", method, path)
 				continue
 			}
 			ep, err := toEndpoint(method, path, item, op)
 			if err != nil {
-				return nil, fmt.Errorf("transform %s %s: %w", method, path, err)
+				return nil, fmt.Errorf("cannot build the IR for %s %s: %w", method, path, err)
 			}
 			api.Endpoints = append(api.Endpoints, ep)
 		}
@@ -98,14 +98,14 @@ func toParameters(item *openapi3.PathItem, op *openapi3.Operation) ([]ir.Paramet
 	for _, pref := range src {
 		if pref == nil || pref.Value == nil {
 			if pref != nil && pref.Ref != "" {
-				return nil, fmt.Errorf("unresolved parameter ref %q", pref.Ref)
+				return nil, fmt.Errorf("unresolved parameter $ref %q. Define that component in the spec or replace the $ref with an inline schema", pref.Ref)
 			}
 			continue
 		}
 		p := pref.Value
 		schema, err := toTypeRef(p.Schema, map[string]bool{})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parameter %q: %w", p.Name, err)
 		}
 		param := ir.Parameter{Name: p.Name, In: p.In, Required: p.Required, Schema: schema}
 		key := p.In + "\x00" + p.Name
@@ -125,13 +125,13 @@ func toRequestBody(ref *openapi3.RequestBodyRef) (*ir.RequestBody, error) {
 	}
 	if ref.Value == nil {
 		if ref.Ref != "" {
-			return nil, fmt.Errorf("unresolved request body ref %q", ref.Ref)
+			return nil, fmt.Errorf("unresolved request body $ref %q. Define that component in the spec or inline the body", ref.Ref)
 		}
 		return nil, nil
 	}
 	ct, schema, err := contentSchema(ref.Value.Content)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("request body: %w", err)
 	}
 	body := &ir.RequestBody{Required: ref.Value.Required, ContentType: ct}
 	if schema != nil {
@@ -158,7 +158,7 @@ func toResponses(responses *openapi3.Responses) ([]ir.Response, error) {
 		}
 		ct, schema, err := contentSchema(ref.Value.Content)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("response %s: %w", key, err)
 		}
 		out = append(out, ir.Response{StatusCode: code, ContentType: ct, Schema: schema})
 	}
@@ -187,7 +187,7 @@ func contentSchema(content openapi3.Content) (string, *ir.TypeRef, error) {
 	}
 	schema, err := toTypeRef(mt.Schema, map[string]bool{})
 	if err != nil {
-		return "", nil, err
+		return "", nil, fmt.Errorf("schema for %s: %w", ct, err)
 	}
 	return ct, &schema, nil
 }
@@ -195,7 +195,7 @@ func contentSchema(content openapi3.Content) (string, *ir.TypeRef, error) {
 func toTypeRef(ref *openapi3.SchemaRef, stack map[string]bool) (ir.TypeRef, error) {
 	if ref == nil || ref.Value == nil {
 		if ref != nil && ref.Ref != "" {
-			return ir.TypeRef{}, fmt.Errorf("unresolved schema ref %q", ref.Ref)
+			return ir.TypeRef{}, fmt.Errorf("unresolved schema $ref %q. Define that component in the spec or inline the schema", ref.Ref)
 		}
 		return ir.TypeRef{}, nil
 	}
@@ -227,7 +227,7 @@ func toTypeRef(ref *openapi3.SchemaRef, stack map[string]bool) (ir.TypeRef, erro
 		if s.Items != nil {
 			it, err := toTypeRef(s.Items, stack)
 			if err != nil {
-				return ir.TypeRef{}, err
+				return ir.TypeRef{}, fmt.Errorf("array items: %w", err)
 			}
 			items = &it
 		}
@@ -263,7 +263,7 @@ func toProperties(s *openapi3.Schema, stack map[string]bool) ([]ir.Property, err
 	for _, name := range names {
 		t, err := toTypeRef(s.Properties[name], stack)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("property %q: %w", name, err)
 		}
 		out = append(out, ir.Property{Name: name, Type: t, Required: required[name]})
 	}

@@ -60,7 +60,7 @@ func handler(resp *ir.Response) http.HandlerFunc {
 		}
 		body, err := json.Marshal(GenerateExample(resp.Schema))
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, "could not encode an example response. Check the response schema", http.StatusInternalServerError)
 			return
 		}
 		ct := resp.ContentType

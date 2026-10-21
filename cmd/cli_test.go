@@ -36,7 +36,7 @@ func TestRootHelpListsSubcommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"generate", "mock", "conformance", "--version"} {
+	for _, want := range []string{"generate", "mock", "conformance", "--version", "--verbose"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("root help missing %q\n%s", want, out)
 		}
@@ -73,6 +73,41 @@ func TestMockHelpShowsSpecAndPort(t *testing.T) {
 	}
 	if !isRequired(newMockCmd(), "spec") {
 		t.Fatal("spec is not marked required")
+	}
+}
+
+func TestVerboseFlag(t *testing.T) {
+	t.Chdir(repoRoot(t))
+
+	dir := t.TempDir()
+	out, err := run(t, "generate", "--spec", "testdata/petstore.yaml", "--output", dir, "--language", "typescript", "--verbose")
+	if err != nil {
+		t.Fatalf("generate --verbose: %v\n%s", err, out)
+	}
+	for _, want := range []string{
+		"verbose: loading spec testdata/petstore.yaml",
+		"verbose: parsed \"Swagger Petstore\" version 1.0.0",
+		"verbose: transforming testdata/petstore.yaml into the IR",
+		"verbose: base URL http://petstore.swagger.io/v1",
+		"verbose: endpoint GET /pets listPets",
+		"verbose: endpoint POST /pets createPets",
+		"verbose: endpoint GET /pets/{petId} showPetById",
+		"verbose: generating typescript client in " + dir,
+		"verbose: wrote " + filepath.Join(dir, "types.ts"),
+		"verbose: wrote " + filepath.Join(dir, "client.ts"),
+		"Generated TypeScript client in " + dir,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("verbose output missing %q\n%s", want, out)
+		}
+	}
+
+	out, err = run(t, "generate", "--spec", "testdata/petstore.yaml", "--output", t.TempDir(), "--language", "python")
+	if err != nil {
+		t.Fatalf("generate: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "verbose:") {
+		t.Fatalf("verbose logs without --verbose:\n%s", out)
 	}
 }
 

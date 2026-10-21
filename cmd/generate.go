@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/atharv1730/SpecForge/internal/gen"
 	_ "github.com/atharv1730/SpecForge/internal/gen/python"
@@ -27,11 +28,11 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	language, err := cmd.Flags().GetString("language")
+	language, err := stringFlag(cmd, "language")
 	if err != nil {
 		return err
 	}
-	outputDir, err := cmd.Flags().GetString("output")
+	outputDir, err := stringFlag(cmd, "output")
 	if err != nil {
 		return err
 	}
@@ -39,11 +40,26 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	logVerbose(cmd, "generating %s client in %s", language, outputDir)
 	if err := generator.Generate(api, outputDir); err != nil {
-		return err
+		return fmt.Errorf("cannot generate the %s client in %s: %w", languageName(language), outputDir, err)
+	}
+	for _, name := range clientFiles(language) {
+		logVerbose(cmd, "wrote %s", filepath.Join(outputDir, name))
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Generated %s client in %s\n", languageName(language), outputDir)
 	return nil
+}
+
+func clientFiles(language string) []string {
+	switch language {
+	case "typescript":
+		return []string{"types.ts", "client.ts"}
+	case "python":
+		return []string{"models.py", "client.py"}
+	default:
+		return nil
+	}
 }
 
 func languageName(language string) string {

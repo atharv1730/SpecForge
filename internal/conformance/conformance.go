@@ -37,12 +37,12 @@ type FailureDetail struct {
 // through net/http. clientDir is the directory of the generated client.
 func Run(api *ir.API, clientDir string, mockPort int) (*Report, error) {
 	if api == nil {
-		return nil, fmt.Errorf("conformance: nil API")
+		return nil, fmt.Errorf("conformance: API is nil. Load an OpenAPI spec before running conformance")
 	}
 
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", mockPort))
 	if err != nil {
-		return nil, fmt.Errorf("conformance: listen: %w", err)
+		return nil, fmt.Errorf("cannot listen on 127.0.0.1:%d for conformance: %w. Pass a free --port", mockPort, err)
 	}
 	srv := mock.NewServer(api, mockPort)
 	go func() { _ = srv.Serve(ln) }()
@@ -70,16 +70,16 @@ func Run(api *ir.API, clientDir string, mockPort int) (*Report, error) {
 func checkEndpoint(client *http.Client, base string, ep ir.Endpoint) error {
 	req, err := newRequest(base, ep)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not build the request for %s %s: %w. Check the path parameters in the spec", ep.Method, ep.Path, err)
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("request to %s %s failed: %w. Confirm the mock server is running", ep.Method, ep.Path, err)
 	}
 	defer res.Body.Close()
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not read the response from %s %s: %w", ep.Method, ep.Path, err)
 	}
 	return validateResponse(ep, res, body)
 }
@@ -93,13 +93,13 @@ func newRequest(base string, ep ir.Endpoint) (*http.Request, error) {
 	if ep.RequestBody != nil {
 		payload, err := json.Marshal(mock.GenerateExample(&ep.RequestBody.Schema))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("cannot encode an example body for %s: %w. Check the request body schema", ep.OperationID, err)
 		}
 		body = bytes.NewReader(payload)
 	}
 	req, err := http.NewRequest(ep.Method, rawURL, body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot create a %s request for %s: %w. Check the method and path in the spec", ep.Method, rawURL, err)
 	}
 	for key, values := range header {
 		for _, value := range values {
@@ -132,7 +132,7 @@ func endpointURL(base string, ep ir.Endpoint) (string, http.Header, error) {
 			}
 			needle := "{" + p.Name + "}"
 			if !strings.Contains(path, needle) {
-				return "", nil, fmt.Errorf("path parameter %q missing from %s", p.Name, ep.Path)
+				return "", nil, fmt.Errorf("path parameter %q is missing from %s. Add {%s} to the path or remove the parameter", p.Name, ep.Path, p.Name)
 			}
 			path = strings.ReplaceAll(path, needle, url.PathEscape(value))
 		case "query":
@@ -171,15 +171,15 @@ func exampleString(schema ir.TypeRef) string {
 
 func validateResponse(ep ir.Endpoint, res *http.Response, body []byte) error {
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return fmt.Errorf("status %d", res.StatusCode)
+		return fmt.Errorf("status %d. Add a 2xx response to this operation or fix the mock", res.StatusCode)
 	}
 	success, ok := lowest2xx(ep)
 	if !ok {
-		return fmt.Errorf("status %d with no 2xx response in the spec", res.StatusCode)
+		return fmt.Errorf("status %d with no 2xx response in the spec. Declare a 2xx response for this operation", res.StatusCode)
 	}
 	if success.Schema != nil || len(bytes.TrimSpace(body)) > 0 {
 		if !json.Valid(body) {
-			return fmt.Errorf("body is not valid JSON")
+			return fmt.Errorf("body is not valid JSON. The mock response must be JSON when the spec declares a schema")
 		}
 	}
 	want := success.ContentType
@@ -188,7 +188,7 @@ func validateResponse(ep ir.Endpoint, res *http.Response, body []byte) error {
 	}
 	got := res.Header.Get("Content-Type")
 	if mediaType(want) != mediaType(got) {
-		return fmt.Errorf("content-type %q, want %q", got, want)
+		return fmt.Errorf("content-type %q, want %q. Align the response content type in the spec", got, want)
 	}
 	return nil
 }

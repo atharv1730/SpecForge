@@ -29,11 +29,11 @@ func runConformance(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	language, err := cmd.Flags().GetString("language")
+	language, err := stringFlag(cmd, "language")
 	if err != nil {
 		return err
 	}
-	port, err := cmd.Flags().GetInt("port")
+	port, err := intFlag(cmd, "port")
 	if err != nil {
 		return err
 	}
@@ -43,15 +43,20 @@ func runConformance(cmd *cobra.Command, args []string) error {
 	}
 	dir, err := os.MkdirTemp("", "specforge-conformance-*")
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot create a temporary directory for the conformance client: %w. Check that the system temp directory is writable", err)
 	}
 	defer os.RemoveAll(dir)
+	logVerbose(cmd, "generating %s client in %s", language, dir)
 	if err := generator.Generate(api, dir); err != nil {
-		return err
+		return fmt.Errorf("cannot generate the %s client for conformance: %w", languageName(language), err)
 	}
+	for _, name := range clientFiles(language) {
+		logVerbose(cmd, "wrote %s", name)
+	}
+	logVerbose(cmd, "checking %d endpoints against the mock server on port %d", len(api.Endpoints), port)
 	report, err := conformance.Run(api, dir, port)
 	if err != nil {
-		return err
+		return fmt.Errorf("conformance could not call the mock server: %w", err)
 	}
 	out := cmd.OutOrStdout()
 	for _, f := range report.Failures {
@@ -61,7 +66,7 @@ func runConformance(cmd *cobra.Command, args []string) error {
 	if report.Failed > 0 {
 		cmd.SilenceUsage = true
 		cmd.SilenceErrors = true
-		return fmt.Errorf("conformance: %d failed", report.Failed)
+		return fmt.Errorf("conformance: %d failed. See the FAIL lines above and fix the spec", report.Failed)
 	}
 	return nil
 }

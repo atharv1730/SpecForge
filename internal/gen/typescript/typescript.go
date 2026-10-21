@@ -32,23 +32,24 @@ func init() {
 // Generate renders the TypeScript client for api into outputDir.
 func (Generator) Generate(api *ir.API, outputDir string) error {
 	if api == nil {
-		return fmt.Errorf("typescript: nil api")
+		return fmt.Errorf("cannot generate a TypeScript client: API is nil. Load an OpenAPI spec before generating")
 	}
 	if outputDir == "" {
-		return fmt.Errorf("typescript: empty output directory")
+		return fmt.Errorf("cannot generate a TypeScript client: output directory is empty. Pass a directory to --output")
 	}
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
-		return err
+		return fmt.Errorf("cannot create output directory %q: %w. Check that the parent directory exists and is writable", outputDir, err)
 	}
 	data := prepare(api)
 	for _, name := range []string{"types.ts", "client.ts"} {
 		var buf bytes.Buffer
 		if err := files.ExecuteTemplate(&buf, name+".tmpl", data); err != nil {
-			return fmt.Errorf("render %s: %w", name, err)
+			return fmt.Errorf("cannot render %s: %w. The TypeScript generator failed while writing the client", name, err)
 		}
 		body := tidy(buf.Bytes())
-		if err := os.WriteFile(filepath.Join(outputDir, name), body, 0o644); err != nil {
-			return err
+		path := filepath.Join(outputDir, name)
+		if err := os.WriteFile(path, body, 0o644); err != nil {
+			return fmt.Errorf("cannot write %s: %w. Check that the output directory is writable", path, err)
 		}
 	}
 	return nil

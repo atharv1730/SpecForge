@@ -29,23 +29,68 @@ representation and generates typed clients and a mock server from that single IR
 		Version:           version,
 		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 	}
+	root.PersistentFlags().Bool("verbose", false, "print detailed logs while loading, transforming, and generating")
 	root.AddCommand(newGenerateCmd(), newMockCmd(), newConformanceCmd())
 	return root
 }
 
+func logVerbose(cmd *cobra.Command, format string, args ...any) {
+	if !verbose(cmd) {
+		return
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "verbose: "+format+"\n", args...)
+}
+
+func verbose(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return false
+	}
+	on, err := cmd.Flags().GetBool("verbose")
+	return err == nil && on
+}
+
+func stringFlag(cmd *cobra.Command, name string) (string, error) {
+	v, err := cmd.Flags().GetString(name)
+	if err != nil {
+		return "", fmt.Errorf("cannot read --%s: %w. Re-run with --help", name, err)
+	}
+	return v, nil
+}
+
+func intFlag(cmd *cobra.Command, name string) (int, error) {
+	v, err := cmd.Flags().GetInt(name)
+	if err != nil {
+		return 0, fmt.Errorf("cannot read --%s: %w. Re-run with --help", name, err)
+	}
+	return v, nil
+}
+
 // loadAPI reads the spec, builds the IR, and prints how many endpoints were found.
 func loadAPI(cmd *cobra.Command) (*ir.API, error) {
-	specPath, err := cmd.Flags().GetString("spec")
+	specPath, err := stringFlag(cmd, "spec")
 	if err != nil {
 		return nil, err
 	}
+	logVerbose(cmd, "loading spec %s", specPath)
 	doc, err := loader.Load(specPath)
 	if err != nil {
 		return nil, err
 	}
+	title, version := "", ""
+	if doc.Info != nil {
+		title, version = doc.Info.Title, doc.Info.Version
+	}
+	logVerbose(cmd, "parsed %q version %s", title, version)
+	logVerbose(cmd, "transforming %s into the IR", specPath)
 	api, err := loader.Transform(doc)
 	if err != nil {
 		return nil, err
+	}
+	if api.BaseURL != "" {
+		logVerbose(cmd, "base URL %s", api.BaseURL)
+	}
+	for _, ep := range api.Endpoints {
+		logVerbose(cmd, "endpoint %s %s %s", ep.Method, ep.Path, ep.OperationID)
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Loaded %d endpoints from %s\n", len(api.Endpoints), specPath)
 	return api, nil

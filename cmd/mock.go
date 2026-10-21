@@ -32,15 +32,16 @@ func runMock(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	port, err := cmd.Flags().GetInt("port")
+	port, err := intFlag(cmd, "port")
 	if err != nil {
 		return err
 	}
 	srv := mock.NewServer(api, port)
 	ln, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot listen on port %d: %w. Stop the process using that port or pass a different --port", port, err)
 	}
+	logVerbose(cmd, "mock server listening on http://localhost:%d", port)
 	fmt.Fprintf(cmd.OutOrStdout(), "Mock server running on http://localhost:%d\n", port)
 
 	serveErr := make(chan error, 1)
@@ -59,10 +60,13 @@ func runMock(cmd *cobra.Command, args []string) error {
 
 	select {
 	case err := <-serveErr:
-		return err
+		return fmt.Errorf("mock server stopped: %w. Start it again and check --port", err)
 	case <-ctx.Done():
 		shut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		return srv.Shutdown(shut)
+		if err := srv.Shutdown(shut); err != nil {
+			return fmt.Errorf("mock server did not shut down within 5s: %w", err)
+		}
+		return nil
 	}
 }

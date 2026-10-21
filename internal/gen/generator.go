@@ -24,7 +24,7 @@ func Register(language string, g Generator) {
 func Get(language string) (Generator, error) {
 	g, ok := registry[language]
 	if !ok {
-		return nil, fmt.Errorf("unsupported language %q", language)
+		return nil, fmt.Errorf("unsupported language %q. Use --language typescript or --language python", language)
 	}
 	return g, nil
 }
