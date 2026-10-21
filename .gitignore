@@ -1,2 +1,9 @@
 .venv/
 .env
+
+# Go binary and build output
+/specforge
+/SpecForge
+*.exe
+out/
+.DS_Store
