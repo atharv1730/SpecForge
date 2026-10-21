@@ -18,3 +18,9 @@ The tradeoff we accept: kin-openapi has lagged libopenapi on some 3.1 features (
 
 ## IR design philosophy
 
+Parse once, generate many. The loader reads an OpenAPI 3.x document a single time and emits an `ir.API`. The TypeScript client, the Python client, and the mock server all walk that same value. A new language is another walk of the IR, not another parser and not another pass over the spec.
+
+The IR is the contract between the loader and every consumer. Generators may depend on the field names, on `TypeRef.Kind` (`primitive`, `object`, `array`, `enum`), and on which pointers are nil (`Endpoint.RequestBody`, `Response.Schema`, `TypeRef.Items`). They may not depend on how an OpenAPI document nests schemas, `$ref`s, or content maps. If that document shape changes, only the loader changes.
+
+`internal/ir` must not import kin-openapi types. A `*openapi3.T`, schema, or any other type from that module leaking into the IR would couple every generator to one parser. The loader translates into IR structs built from the standard library alone, so replacing kin-openapi stays inside `internal/loader`.
+
