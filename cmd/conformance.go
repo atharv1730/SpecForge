@@ -6,6 +6,7 @@ import (
 
 	"github.com/atharv1730/SpecForge/internal/conformance"
 	"github.com/atharv1730/SpecForge/internal/gen"
+	_ "github.com/atharv1730/SpecForge/internal/gen/python"
 	_ "github.com/atharv1730/SpecForge/internal/gen/typescript"
 	"github.com/spf13/cobra"
 )

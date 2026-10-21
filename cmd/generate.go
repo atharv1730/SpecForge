@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/atharv1730/SpecForge/internal/gen"
+	_ "github.com/atharv1730/SpecForge/internal/gen/python"
 	_ "github.com/atharv1730/SpecForge/internal/gen/typescript"
 	"github.com/spf13/cobra"
 )
@@ -41,6 +42,17 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 	if err := generator.Generate(api, outputDir); err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Generated TypeScript client in %s\n", outputDir)
+	fmt.Fprintf(cmd.OutOrStdout(), "Generated %s client in %s\n", languageName(language), outputDir)
 	return nil
+}
+
+func languageName(language string) string {
+	switch language {
+	case "typescript":
+		return "TypeScript"
+	case "python":
+		return "Python"
+	default:
+		return language
+	}
 }

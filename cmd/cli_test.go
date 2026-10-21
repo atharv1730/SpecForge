@@ -118,6 +118,15 @@ func TestConformanceCLI(t *testing.T) {
 		t.Fatalf("output = %q", out)
 	}
 
+	port = freePort(t)
+	out, err = run(t, "conformance", "--spec", "testdata/petstore.yaml", "--language", "python", "--port", strconv.Itoa(port))
+	if err != nil {
+		t.Fatalf("python conformance: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "3 passed, 0 failed") {
+		t.Fatalf("python output = %q", out)
+	}
+
 	spec := filepath.Join(t.TempDir(), "fail.yaml")
 	failSpec := []byte(`openapi: "3.0.0"
 info:
@@ -181,12 +190,32 @@ func TestBinaryLoadsPetstore(t *testing.T) {
 	}
 
 	out, err = runBin(t, bin, root, "generate", "--spec", spec, "--output", outDir, "--language", "python")
+	if err != nil {
+		t.Fatalf("python: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "Generated Python client in "+outDir) {
+		t.Fatalf("python output = %q", out)
+	}
+	models := string(mustRead(t, filepath.Join(outDir, "models.py")))
+	pyClient := string(mustRead(t, filepath.Join(outDir, "client.py")))
+	for _, want := range []string{"class Pet", "class Error", "Pets = list[Pet]"} {
+		if !strings.Contains(models, want) {
+			t.Fatalf("models.py missing %q\n%s", want, models)
+		}
+	}
+	for _, want := range []string{"def list_pets(", "def show_pet_by_id(", `/pets/{quote(_param(pet_id), safe="")}`} {
+		if !strings.Contains(pyClient, want) {
+			t.Fatalf("client.py missing %q\n%s", want, pyClient)
+		}
+	}
+
+	out, err = runBin(t, bin, root, "generate", "--spec", spec, "--output", outDir, "--language", "nope")
 	if err == nil {
 		t.Fatal("expected unsupported language to exit 1")
 	}
 	var pyErr *exec.ExitError
 	if !errors.As(err, &pyErr) || pyErr.ExitCode() != 1 || !strings.Contains(out, "unsupported language") {
-		t.Fatalf("python: %v\n%s", err, out)
+		t.Fatalf("nope: %v\n%s", err, out)
 	}
 
 	out, err = runBin(t, bin, root, "generate", "--spec", "bad.yaml", "--output", "out", "--language", "typescript")
