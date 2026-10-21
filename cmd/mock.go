@@ -1,18 +1,13 @@
 package cmd
 
-import (
-	"fmt"
-
-	"github.com/spf13/cobra"
-)
+import "github.com/spf13/cobra"
 
 func newMockCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mock",
 		Short: "Serve a mock API from an OpenAPI spec",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintln(cmd.OutOrStdout(), "mock: not implemented")
-			return nil
+			return loadSpec(cmd)
 		},
 	}
 	cmd.Flags().String("spec", "", "path to the OpenAPI file (required)")

@@ -2,6 +2,10 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -64,30 +68,67 @@ func TestMockHelpShowsSpecAndPort(t *testing.T) {
 	}
 }
 
-func TestGenerateStub(t *testing.T) {
+func TestMissingRequiredFlags(t *testing.T) {
 	if _, err := run(t, "generate"); err == nil {
 		t.Fatal("expected missing required flags to fail")
 	}
-	out, err := run(t, "generate", "--spec", "api.yaml", "--output", "out", "--language", "typescript")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out, "generate: not implemented") {
-		t.Fatalf("stdout = %q", out)
-	}
-}
-
-func TestMockStub(t *testing.T) {
 	if _, err := run(t, "mock"); err == nil {
 		t.Fatal("expected missing required flags to fail")
 	}
-	out, err := run(t, "mock", "--spec", "api.yaml")
-	if err != nil {
-		t.Fatal(err)
+}
+
+func TestBinaryLoadsPetstore(t *testing.T) {
+	root := repoRoot(t)
+	bin := filepath.Join(t.TempDir(), "specforge")
+	build := exec.Command("go", "build", "-o", bin, ".")
+	build.Dir = root
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "mock: not implemented") {
-		t.Fatalf("stdout = %q", out)
+
+	spec := "testdata/petstore.yaml"
+	want := "Loaded 3 endpoints from " + spec
+	for _, args := range [][]string{
+		{"generate", "--spec", spec, "--output", "out", "--language", "typescript"},
+		{"mock", "--spec", spec},
+	} {
+		out, err := runBin(t, bin, root, args...)
+		if err != nil {
+			t.Fatalf("%v: %v\n%s", args, err, out)
+		}
+		if !strings.Contains(out, want) {
+			t.Fatalf("%v output = %q", args, out)
+		}
 	}
+
+	out, err := runBin(t, bin, root, "generate", "--spec", "bad.yaml", "--output", "out", "--language", "typescript")
+	if err == nil {
+		t.Fatal("expected exit 1")
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "bad.yaml") {
+		t.Fatalf("output = %q", out)
+	}
+}
+
+func runBin(t *testing.T, bin, dir string, args ...string) (string, error) {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	return filepath.Dir(filepath.Dir(file))
 }
 
 func isRequired(cmd *cobra.Command, name string) bool {
