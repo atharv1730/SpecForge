@@ -2,13 +2,20 @@ package cmd
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -89,16 +96,9 @@ func TestBinaryLoadsPetstore(t *testing.T) {
 
 	spec := "testdata/petstore.yaml"
 	want := "Loaded 3 endpoints from " + spec
-	out, err := runBin(t, bin, root, "mock", "--spec", spec)
-	if err != nil {
-		t.Fatalf("mock: %v\n%s", err, out)
-	}
-	if !strings.Contains(out, want) {
-		t.Fatalf("mock output = %q", out)
-	}
 
 	outDir := filepath.Join(t.TempDir(), "out")
-	out, err = runBin(t, bin, root, "generate", "--spec", spec, "--output", outDir, "--language", "typescript")
+	out, err := runBin(t, bin, root, "generate", "--spec", spec, "--output", outDir, "--language", "typescript")
 	if err != nil {
 		t.Fatalf("generate: %v\n%s", err, out)
 	}
@@ -138,6 +138,75 @@ func TestBinaryLoadsPetstore(t *testing.T) {
 	if !strings.Contains(out, "bad.yaml") {
 		t.Fatalf("output = %q", out)
 	}
+}
+
+func TestMockSmoke(t *testing.T) {
+	t.Chdir(repoRoot(t))
+	port := freePort(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"mock", "--spec", "testdata/petstore.yaml", "--port", strconv.Itoa(port)})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- root.ExecuteContext(ctx)
+	}()
+
+	url := fmt.Sprintf("http://127.0.0.1:%d/pets", port)
+	var res *http.Response
+	var err error
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		res, err = http.Get(url)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("server did not start: %v\n%s", err, out.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+	var body []map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body) != 1 || body[0]["name"] != "string" {
+		t.Fatalf("body = %#v", body)
+	}
+	got := out.String()
+	running := fmt.Sprintf("Mock server running on http://localhost:%d", port)
+	if !strings.Contains(got, running) || !strings.Contains(got, "Loaded 3 endpoints from testdata/petstore.yaml") {
+		t.Fatalf("output = %q", got)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("shutdown timed out")
+	}
+}
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	return ln.Addr().(*net.TCPAddr).Port
 }
 
 func mustRead(t *testing.T, path string) []byte {

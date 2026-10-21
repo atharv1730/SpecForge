@@ -33,12 +33,7 @@ representation and generates typed clients and a mock server from that single IR
 	return root
 }
 
-// loadSpec reads the spec, builds the IR, and prints how many endpoints were found.
-func loadSpec(cmd *cobra.Command) error {
-	_, err := loadAPI(cmd)
-	return err
-}
-
+// loadAPI reads the spec, builds the IR, and prints how many endpoints were found.
 func loadAPI(cmd *cobra.Command) (*ir.API, error) {
 	specPath, err := cmd.Flags().GetString("spec")
 	if err != nil {
