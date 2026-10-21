@@ -36,7 +36,7 @@ func TestRootHelpListsSubcommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"generate", "mock", "--version"} {
+	for _, want := range []string{"generate", "mock", "conformance", "--version"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("root help missing %q\n%s", want, out)
 		}
@@ -82,6 +82,68 @@ func TestMissingRequiredFlags(t *testing.T) {
 	}
 	if _, err := run(t, "mock"); err == nil {
 		t.Fatal("expected missing required flags to fail")
+	}
+	if _, err := run(t, "conformance"); err == nil {
+		t.Fatal("expected missing required flags to fail")
+	}
+}
+
+func TestConformanceHelpMarksRequiredFlags(t *testing.T) {
+	out, err := run(t, "conformance", "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"--spec", "--language", "--port", "8080", "required"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("conformance help missing %q\n%s", want, out)
+		}
+	}
+	conf := newConformanceCmd()
+	for _, name := range []string{"spec", "language"} {
+		if !isRequired(conf, name) {
+			t.Fatalf("%s is not marked required", name)
+		}
+	}
+}
+
+func TestConformanceCLI(t *testing.T) {
+	t.Chdir(repoRoot(t))
+
+	port := freePort(t)
+	out, err := run(t, "conformance", "--spec", "testdata/petstore.yaml", "--language", "typescript", "--port", strconv.Itoa(port))
+	if err != nil {
+		t.Fatalf("conformance: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "Loaded 3 endpoints from testdata/petstore.yaml") || !strings.Contains(out, "3 passed, 0 failed") {
+		t.Fatalf("output = %q", out)
+	}
+
+	spec := filepath.Join(t.TempDir(), "fail.yaml")
+	failSpec := []byte(`openapi: "3.0.0"
+info:
+  title: Fail
+  version: "1.0.0"
+paths:
+  /missing:
+    get:
+      operationId: noSuccess
+      responses:
+        "404":
+          description: missing
+`)
+	if err := os.WriteFile(spec, failSpec, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	port = freePort(t)
+	out, err = run(t, "conformance", "--spec", spec, "--language", "typescript", "--port", strconv.Itoa(port))
+	if err == nil {
+		t.Fatalf("expected failing conformance to return an error\n%s", out)
+	}
+	if !strings.Contains(out, "FAIL GET /missing noSuccess:") || !strings.Contains(out, "0 passed, 1 failed") {
+		t.Fatalf("output = %q", out)
+	}
+	if strings.Contains(out, "Usage:") {
+		t.Fatalf("usage printed on conformance failure\n%s", out)
 	}
 }
 

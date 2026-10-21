@@ -29,7 +29,7 @@ representation and generates typed clients and a mock server from that single IR
 		Version:           version,
 		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 	}
-	root.AddCommand(newGenerateCmd(), newMockCmd())
+	root.AddCommand(newGenerateCmd(), newMockCmd(), newConformanceCmd())
 	return root
 }
 

@@ -10,10 +10,11 @@ go install github.com/atharv1730/SpecForge@latest
 
 ## Usage
 
-Placeholder commands (not implemented yet):
-
 ```bash
 specforge generate --spec path/to/openapi.yaml --output ./out --language typescript
 specforge generate --spec path/to/openapi.yaml --output ./out --language python
 specforge mock --spec path/to/openapi.yaml --port 8080
+specforge conformance --spec path/to/openapi.yaml --language typescript --port 8080
 ```
+
+`conformance` generates a client, serves the mock API, and calls every endpoint. `--port` defaults to 8080. The process exits 0 when every check passes and 1 when any fail.
